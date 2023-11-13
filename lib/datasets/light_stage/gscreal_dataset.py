@@ -108,8 +108,7 @@ class Dataset(data.Dataset):
         return coord, out_sh, can_bounds, bounds, Rh, Th
 
     def pyramid_img_ratio(self):
-        #ratio_list = [.1, .2, .3, .4, .5, .6, .7, .8, .9, 1.0]
-        ratio_list = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        ratio_list = [.1, .2, .3, .4, .5, .6, .7, .8, .9, 1.0]
         self.iter += 1
 
         step = 5000
