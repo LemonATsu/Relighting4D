@@ -107,7 +107,8 @@ class Trainer(object):
 
         if evaluator is not None:
             result = evaluator.summarize()
-            val_loss_stats.update(result)
+            if result is not None:
+                val_loss_stats.update(result)
 
         if recorder:
             recorder.record('val', epoch, val_loss_stats, image_stats)

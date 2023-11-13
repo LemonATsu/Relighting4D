@@ -40,8 +40,9 @@ class NetworkWrapper(nn.Module):
         scalar_stats = {}
         loss = 0
 
-        mask = batch['mask_at_box']
-        img_loss = self.img2mse(ret['rgb_map'][mask], batch['rgb'][mask])
+        #mask = batch['mask_at_box']
+        #img_loss = self.img2mse(ret['rgb_map'][mask], batch['rgb'][mask])
+        img_loss = self.img2mse(ret['rgb_map'], batch['rgb'])
         scalar_stats.update({'img_loss': img_loss})
         if 'male' in cfg.exp_name:
             loss += img_loss * 10
