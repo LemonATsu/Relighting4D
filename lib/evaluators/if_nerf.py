@@ -61,7 +61,7 @@ class Evaluator:
         if cfg.evaluate_relight:
             img_pred = batch['bg'][0].clone().cpu().numpy()
             img_gt = batch['img'][0].clone().cpu().numpy()
-            img_pred[mask_at_box] = rgb_pred #+ (1 - output['alpha_map'][:, None].cpu().numpy()) * img_pred[mask_at_box]
+            img_pred[mask_at_box] = rgb_pred + (1 - output['alpha_map'][:, None].cpu().numpy()) * img_pred[mask_at_box]
 
         else:
             img_pred = np.zeros((H, W, 3)) + white_bkgd
