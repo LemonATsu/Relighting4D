@@ -1,33 +1,33 @@
 import torch.utils.data as data
+from lib.utils import base_utils
+from PIL import Image
 import numpy as np
-import h5py
+import json
 import os
 import imageio
 import cv2
 from lib.config import cfg
 from lib.utils.if_nerf import if_nerf_data_utils as if_nerf_dutils
-
-import ctypes
-import multiprocessing as mp
+from plyfile import PlyData
+from lib.utils import snapshot_data_utils as snapshot_dutils
+from lib.utils import render_utils
+import h5py
 
 
 class Dataset(data.Dataset):
 
-    def __init__(self, data_root, human, split, num_cams=2, **kwargs):
+    def __init__(self, data_root, human, split, **kwargs):
         super(Dataset, self).__init__()
         self.data_root = data_root
         self.h5_path = os.path.join(data_root, f'{human}_{split}.h5')
         self.vertices_path = os.path.join(data_root, 'vertices', f'{human}_{split}.npy')
         self.nrays = cfg.N_rand
         self.split = split
-        self.num_cams = num_cams
+        self.eval_cams = np.array([0, 1])
 
-        shared_array_base = mp.Array(ctypes.c_int, 1)
-        shared_array = np.ctypeslib.as_array(shared_array_base.get_obj())
-        self.iter = shared_array.reshape(-1)
         self.dataset = None
         self.init_meta()
-    
+
     def init_dataset(self):
         self.dataset = h5py.File(self.h5_path, 'r')
     
@@ -43,6 +43,8 @@ class Dataset(data.Dataset):
         self.focals = dataset['focals'][:]
         self.centers = dataset['centers'][:]
         self.c2ws = dataset['c2ws'][:]
+        self.bgs = dataset['bkgds'][:]
+        self.bg_inds = dataset['bkgd_idxs'][:]
         dataset.close()
 
         self.K = np.eye(3)[None].repeat(len(self.focals), 0)
@@ -58,15 +60,10 @@ class Dataset(data.Dataset):
         swap_rot[:, 2, 2] = -1.
         self.RT = np.linalg.inv(self.c2ws @ swap_rot).astype(np.float32)
         self.ims = np.zeros((self._len)).astype(np.uint8)
+        self.num_cams = len(self.K)
 
-        # hard-coded for now
-        self.train_cams = [0, 1, 2]
-        train_cams = self.train_cams[:self.num_cams]
-        kp_selected = np.where(self.kp_inds < cfg.num_train_frame)[0]
-        cam_selected = np.array([c for c, cid in enumerate(self.cam_inds) if cid in train_cams])
-        self._train_idx_map = np.intersect1d(kp_selected, cam_selected)
-        self._len = len(self._train_idx_map)
-    
+        self.index = np.array([i for i in range(self._len) if self.cam_inds[i] in self.eval_cams])
+        self._len = len(self.index)
 
     def prepare_input(self, i):
 
@@ -115,43 +112,30 @@ class Dataset(data.Dataset):
         out_sh = (out_sh | (x - 1)) + 1
 
         return coord, out_sh, can_bounds, bounds, Rh, Th
-
-    def pyramid_img_ratio(self):
-        ratio_list = [.1, .2, .3, .4, .5, .6, .7, .8, .9, 1.0]
-        self.iter += 1
-
-        step = 5000
-        if self.iter < 10*step:
-            return ratio_list[(self.iter.item() // step)]
-        else:
-            return 1.
-
-    def get_mask(self, index):
-        msk = self.dataset['masks'][index].reshape(*self.HW, 1).astype(np.uint8)
-        border = 5
-        kernel = np.ones((border, border), np.uint8)
-        msk_erode = cv2.erode(msk.copy(), kernel)
-        msk_dilate = cv2.dilate(msk.copy(), kernel)
-        msk[(msk_dilate - msk_erode) == 1] = 100
-
-        return msk
     
+    def get_masks(self, i):
+        kp_idx = self.kp_inds[i]
+        num_novel_pose = cfg.num_novel_pose_frame
+        msks = [
+            self.dataset[f'masks'][kp_idx + c * num_novel_pose].reshape(*self.HW, 1).astype(np.uint8)
+            for c in self.eval_cams
+        ]
+        msk = self.dataset[f'masks'][i].reshape(*self.HW).astype(np.uint8)
+        return msks, msk
+
     def __getitem__(self, index):
 
         if self.dataset is None:
             self.init_dataset()
-
-        if cfg.pyramid:
-            cfg.ratio = self.pyramid_img_ratio()
-        index_ = index
-        index = self._train_idx_map[index_]
+        index = self.index[index]
 
         img = self.dataset['imgs'][index].reshape(*self.HW, 3) / 255.
         img = cv2.resize(img, (cfg.W, cfg.H))
+        bg = self.dataset['bkgds'][self.bg_inds[index]].reshape(*self.HW, 3) / 255.
 
         # TODO: deal with this
-        #msk = self.dataset['sampling_masks'][index].reshape(*self.HW, 1).astype(np.uint8)
-        msk = self.get_mask(index)
+        # msk = self.dataset['masks'][index].reshape(*self.HW, 1).astype(np.uint8)
+        msks, msk = self.get_masks(index)
 
         cam_ind = self.cam_inds[index].copy()
         K = self.K[cam_ind].copy()
@@ -164,39 +148,46 @@ class Dataset(data.Dataset):
         # reduce the image resolution by ratio
         H, W = int(img.shape[0] * cfg.ratio), int(img.shape[1] * cfg.ratio)
         img = cv2.resize(img, (W, H), interpolation=cv2.INTER_AREA)
+        msks = [cv2.resize(m, (W, H), interpolation=cv2.INTER_NEAREST) for m in msks]
         msk = cv2.resize(msk, (W, H), interpolation=cv2.INTER_NEAREST)
+        """ 
         if cfg.mask_bkgd:
             img[msk == 0] = 0
             if cfg.white_bkgd:
                 img[msk == 0] = 1
+        """
         K[:2] = K[:2] * cfg.ratio
 
         frame_index = i = self.kp_inds[index]
         coord, out_sh, can_bounds, bounds, Rh, Th = self.prepare_input(i)
 
-        if cfg.cache_shape and self.split == 'train':
-            rgb, ray_o, ray_d, near, far, coord_, mask_at_box, mmsk = if_nerf_dutils.sample_ray_h36m(
-                img, msk, K, R, T, can_bounds, self.nrays, 'test')
-        else:
-            rgb, ray_o, ray_d, near, far, coord_, mask_at_box, mmsk = if_nerf_dutils.sample_ray_h36m(
-                img, msk, K, R, T, can_bounds, self.nrays, self.split)
+        ray_o, ray_d, near, far, _, _, mask_at_box = render_utils.image_rays(
+            RT, K, can_bounds)
+        
+        Ks = self.K.copy()[self.eval_cams]
+        Ks[:, :2] = Ks[:, :2] * cfg.ratio
+        RTs = self.RT.copy()[self.eval_cams]
 
         ret = {
             'coord': coord,
             'out_sh': out_sh,
-            'rgb': rgb,
             'ray_o': ray_o,
             'ray_d': ray_d,
             'near': near,
             'far': far,
+            'rgb': img[mask_at_box.reshape(H, W)],
             'mask_at_box': mask_at_box,
-            'mmsk': mmsk,
+            'msk': msk,
+            'RT': RTs,
+            'Ks': Ks,
+            'msks': np.array(msks),
+            'msk': msk,
+            'img': img,
+            'bg': bg,
         }
 
         R = cv2.Rodrigues(Rh)[0].astype(np.float32)
-        latent_index = frame_index
-        if cfg.test_novel_pose:
-            latent_index = cfg.num_train_frame - 1
+        latent_index = cfg.num_train_frame - 1
 
         meta = {
             'bounds': bounds,

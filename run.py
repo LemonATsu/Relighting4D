@@ -68,6 +68,36 @@ def run_evaluate():
         evaluator.evaluate(output, batch)
     evaluator.summarize()
 
+def run_evaluate_npose():
+    from lib.datasets import make_data_loader
+    from lib.evaluators import make_evaluator
+    import tqdm
+    import torch
+    from lib.networks import make_network
+    from lib.utils import net_utils
+    from lib.networks.renderer import make_renderer
+
+    cfg.perturb = 0
+
+    network = make_network(cfg).cuda()
+    net_utils.load_network(network,
+                           cfg.trained_model_dir,
+                           resume=cfg.resume,
+                           epoch=cfg.test.epoch)
+    network.train()
+
+    data_loader = make_data_loader(cfg, is_train=False)
+    renderer = make_renderer(cfg, network)
+    evaluator = make_evaluator(cfg)
+    for batch in tqdm.tqdm(data_loader):
+        for k in batch:
+            if k != 'meta':
+                batch[k] = batch[k].cuda()
+        with torch.no_grad():
+            output = renderer.relight_npose_render(batch)
+        evaluator.evaluate(output, batch)
+    evaluator.summarize()
+
 def run_relight_bkgd():
     from lib.networks import make_network
     from lib.datasets import make_data_loader

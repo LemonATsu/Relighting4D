@@ -198,7 +198,11 @@ class CfgNode(dict):
                 )
                 d = d[subkey]
             subkey = key_list[-1]
-            _assert_with_logging(subkey in d, "Non-existent key: {}".format(full_key))
+            try:
+                _assert_with_logging(subkey in d, "Non-existent key: {}".format(full_key))
+            except:
+                import pdb; pdb.set_trace()
+                print
             value = _decode_cfg_value(v)
             value = _check_and_coerce_cfg_value_type(value, d[subkey], subkey, full_key)
             d[subkey] = value

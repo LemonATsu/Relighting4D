@@ -157,13 +157,12 @@ def sample_ray(img, msk, K, R, T, bounds, nrays, split):
     return rgb, ray_o, ray_d, near, far, coord, mask_at_box, msk
 
 
-def sample_ray_h36m(img, msk, K, R, T, bounds, nrays, split):
+def sample_ray_h36m(img, msk, K, R, T, bounds, nrays, split, index=None):
     H, W = img.shape[:2]
     ray_o, ray_d = get_rays(H, W, K, R, T)
 
     pose = np.concatenate([R, T], axis=1)
     bound_mask = get_bound_2d_mask(bounds, K, pose, H, W)
-
     msk = msk * bound_mask
     bound_mask[msk == 100] = 0
 

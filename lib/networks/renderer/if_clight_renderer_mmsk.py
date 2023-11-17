@@ -78,6 +78,7 @@ class Renderer(if_clight_renderer.Renderer):
                         sp_input, batch):
         # sampling points along camera rays
         wpts, z_vals = self.get_sampling_points(ray_o, ray_d, near, far)
+
         inside = self.prepare_inside_pts(wpts, batch)
 
         # viewing direction
@@ -109,7 +110,9 @@ class Renderer(if_clight_renderer.Renderer):
     
     def get_depth(self, ray_o, ray_d, near, far, feature_volume, sp_input, batch):
         pts, z = self.get_sampling_points(ray_o, ray_d, near, far)
-        inside = self.prepare_inside_pts(pts, batch)
+        #inside = self.prepare_inside_pts(pts, batch)
+        inside = torch.ones_like(pts.reshape(1, -1, 3)[..., 0]).bool()
+
         raw_decoder = lambda x_point: self.net.net['neuralbody'].calculate_density(x_point, feature_volume, sp_input)
         pts_raw = self.get_density(pts, inside, raw_decoder)
         n_batch, n_pixel, n_sample = pts.shape[:3]

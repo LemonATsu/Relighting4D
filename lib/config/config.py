@@ -97,7 +97,7 @@ cfg.test.epoch = -1
 cfg.test.sampler = 'default'
 cfg.test.batch_sampler = 'default'
 cfg.test.sampler_meta = CN({'min_hw': [480, 640], 'max_hw': [480, 640], 'strategy': 'origin'})
-cfg.test.frame_sampler_interval = 30
+cfg.test.frame_sampler_interval = 1
 
 # trained model
 cfg.trained_model_dir = 'data/trained_model'
@@ -122,6 +122,7 @@ cfg.train_shape = False
 cfg.vis_shape = False
 cfg.train_relight = False
 cfg.vis_relight = False
+cfg.evaluate_relight = False
 cfg.train_nba = False
 cfg.vis_nba = False
 cfg.train_nble = False
@@ -194,6 +195,9 @@ def make_cfg(args):
     
     if cfg.vis_relight:
         cfg.merge_from_other_cfg(cfg.vis_relight_cfg)
+    
+    if cfg.evaluate_relight:
+        cfg.merge_from_other_cfg(cfg.evaluate_relight_cfg)
 
     if cfg.train_nba:
         cfg.merge_from_other_cfg(cfg.train_nba_cfg)

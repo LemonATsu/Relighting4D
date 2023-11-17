@@ -229,6 +229,9 @@ class Network(ShapeModel):
         # rendering
         rgb_pred, rgb_olat, rgb_probes, hdr = self._render(lvis_pred, brdf, surf2light, normal_pred, relight_olat=relight_olat, relight_probes=relight_probes)
 
+        #rgb_pred = albedo
+        #import pdb; pdb.set_trace()
+        #print
         pred = {
             'rgb': rgb_pred, 'normal': normal_pred, 'lvis': lvis_pred,
             'albedo': albedo, 'brdf': brdf_prop, 'hdr': hdr}

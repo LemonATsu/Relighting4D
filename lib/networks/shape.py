@@ -24,11 +24,11 @@ class Network(nn.Module):
         light_h = int(cfg.light_h)
         light_w = int(light_h * 2)
         lxyz, lareas = gen_light_xyz(light_h, light_w)
-        if 'xyzc' in cfg.exp_name or 'zju' in cfg.exp_name:
+        if 'xyzc' in cfg.exp_name or 'zju' in cfg.exp_name :
             print("zju-mocap:{}, using different lighting......".format(cfg.exp_name))
             lxyz[...,1] = -lxyz[...,1]
             lxyz[...,0] = -lxyz[...,0]
-        else:
+        elif not ('gscreal' in cfg.exp_name):
             lxyz = lxyz[..., [0, 2, 1]]
             lxyz[...,1] = -lxyz[...,1]
         lxyz = torch.from_numpy(lxyz).float().cuda()

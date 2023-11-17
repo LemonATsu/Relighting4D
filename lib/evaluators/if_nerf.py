@@ -4,6 +4,7 @@ from skimage.measure import compare_ssim
 import os
 import cv2
 from termcolor import colored
+import imageio
 
 
 class Evaluator:
@@ -11,6 +12,7 @@ class Evaluator:
         self.mse = []
         self.psnr = []
         self.ssim = []
+        self.cnt = 0
 
     def psnr_metric(self, img_pred, img_gt):
         mse = np.mean((img_pred - img_gt)**2)
@@ -45,7 +47,10 @@ class Evaluator:
         return ssim
 
     def evaluate(self, output, batch):
-        rgb_pred = output['rgb_map'][0].detach().cpu().numpy()
+        if cfg.evaluate_relight:
+            rgb_pred = output['img_pred'].detach().cpu().numpy()
+        else:
+            rgb_pred = output['rgb_map'][0].detach().cpu().numpy()
         rgb_gt = batch['rgb'][0].detach().cpu().numpy()
 
         mask_at_box = batch['mask_at_box'][0].detach().cpu().numpy()
@@ -53,11 +58,21 @@ class Evaluator:
         mask_at_box = mask_at_box.reshape(H, W)
         # convert the pixels into an image
         white_bkgd = int(cfg.white_bkgd)
-        img_pred = np.zeros((H, W, 3)) + white_bkgd
-        img_pred[mask_at_box] = rgb_pred
-        img_gt = np.zeros((H, W, 3)) + white_bkgd
-        img_gt[mask_at_box] = rgb_gt
+        if cfg.evaluate_relight:
+            img_pred = batch['bg'][0].clone().cpu().numpy()
+            img_gt = batch['img'][0].clone().cpu().numpy()
+            img_pred[mask_at_box] = rgb_pred #+ (1 - output['alpha_map'][:, None].cpu().numpy()) * img_pred[mask_at_box]
 
+        else:
+            img_pred = np.zeros((H, W, 3)) + white_bkgd
+            img_pred[mask_at_box] = rgb_pred
+            img_gt = np.zeros((H, W, 3)) + white_bkgd
+            img_gt[mask_at_box] = rgb_gt
+
+
+        #for i in range(2):
+        #    msk = batch['msks'][0, i].detach().cpu().numpy()
+        #    imageio.imwrite(f'test_msk{i}.png', msk * 255)
         if cfg.eval_whole_img:
             rgb_pred = img_pred
             rgb_gt = img_gt
@@ -72,6 +87,10 @@ class Evaluator:
         rgb_gt = img_gt
         ssim = self.ssim_metric(rgb_pred, rgb_gt, batch)
         self.ssim.append(ssim)
+        os.makedirs(cfg.result_dir, exist_ok=True)
+        savepath = os.path.join(cfg.result_dir, f'{self.cnt:05d}.png')
+        self.cnt += 1
+        imageio.imwrite(savepath, (rgb_pred * 255).astype(np.uint8))
 
     def summarize(self):
         result_dir = cfg.result_dir
